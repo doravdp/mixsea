@@ -366,6 +366,8 @@ def eps_overturn(
     eps[isbad] = np.nan
     N2 = diag["N2"].copy()
     N2[isbad] = np.nan
+    Lt[isbad] = np.nan
+    thorpe_disp[isbad] = np.nan
 
     # Fill with background epsilon
     eps[np.isnan(eps)] = background_eps
