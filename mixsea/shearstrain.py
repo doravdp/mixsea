@@ -430,7 +430,7 @@ def gm_shear_variance(m, iim, N):
         (3 * np.pi * E0 * b * jstar / 2) * m**2 / (m + jstar * np.pi / b * N / N0) ** 2
     )
     # integrate
-    Sgm = np.trapezoid(y=Pgm[iim], x=m[iim])
+    Sgm = np.trapz(y=Pgm[iim], x=m[iim])
     return Sgm, Pgm
 
 
@@ -485,7 +485,7 @@ def gm_strain_variance(m, iim, N):
     E0 = 6.3e-5  # GM energy level
     Pgm = (np.pi * E0 * b * jstar / 2) * m**2 / (m + jstar * np.pi / b * N / N0) ** 2
     # integrate
-    Sgm = np.trapezoid(y=Pgm[iim], x=m[iim])
+    Sgm = np.trapz(y=Pgm[iim], x=m[iim])
     return Sgm, Pgm
 
 
@@ -717,7 +717,7 @@ def shearstrain(
 
     # Create an evenly spaced wavenumber vector if none was provided
     if m is None:
-        m = wavenumber_vector(w=window_size)
+        m = wavenumber_vector(w=300)
 
     # Generate depth bin vector if none provided
     if depth_bin is None:
@@ -844,14 +844,14 @@ def shearstrain(
 
         if calcsh:
             # Integrate shear spectrum to obtain shear variance
-            Ssh = np.trapezoid(Ptot_sh[iimsh], m[iimsh])
+            Ssh = np.trapz(Ptot_sh[iimsh], m[iimsh])
             Int_sh[iwin] = Ssh
             # GM shear variance
             Sshgm, Pshgm = gm_shear_variance(m, iimsh, Nm)
             Int_sh_gm[iwin] = Sshgm
 
         # Integrate strain spectrum to obtain strain variance
-        Sst = np.trapezoid(Ptot_st[iimst], m[iimst])
+        Sst = np.trapz(Ptot_st[iimst], m[iimst])
         Int_st[iwin] = Sst
         # GM strain variance
         Sstgm, Pstgm = gm_strain_variance(m, iimst, Nm)

@@ -30,7 +30,8 @@ def nan_eps_overturn(
         return eps_overturn(depth, t, SP, **kwargs)
 
     eps = np.full_like(depth, np.nan)
-    N2 = np.full_like(depth, np.nan)
+    N2_linear = np.full_like(depth, np.nan)
+    N2_bulk = np.full_like(depth, np.nan)
 
     # Don't want to pass return_diagnostics twice.
     if "return_diagnostics" in kwargs:
@@ -38,7 +39,7 @@ def nan_eps_overturn(
     else:
         return_diagnostics = False
 
-    eps[notnan], N2[notnan], diag = eps_overturn(
+    eps[notnan], N2_linear[notnan], N2_bulk[notnan], diag = eps_overturn(
         depth[notnan],
         t[notnan],
         SP[notnan],
@@ -58,7 +59,7 @@ def nan_eps_overturn(
         return eps, N2, diag
 
     else:
-        return eps, N2
+        return eps, N2_linear, N2_bulk
 
 
 def eps_overturn(
@@ -78,6 +79,7 @@ def eps_overturn(
     EOS="gsw",
     linear_EOS_params=dict(rho0=1025, a=2e-4, b=7e-4, SP0=35, t0=15),
     return_diagnostics=False,
+    Gamma=0.2
 ):
     """
     Calculate turbulent dissipation based on the Thorpe scale method. This function cannot handle
@@ -112,7 +114,7 @@ def eps_overturn(
             the dnoise parameter is passed as the `accuracy' argument of the intermediate
             profile method.
     N2_method : string, optional
-            Method for calculation of buoyancy frequency. Default is 'teosp1'. Options are 'bulk',
+            Method for calculation of buoyancy frequency for turbulent diffusivity. Default is 'teosp1'. Options are 
             'endpt', 'teos' and 'teosp1'.
     overturns_from_t : bool, optional
             If true, overturning patches will be diagnosed from the temperature or conservative temperature,
@@ -166,9 +168,9 @@ def eps_overturn(
             f"Input array sizes do not match. depth.size = {depth.size}, t.size = {t.size}, SP.size = {SP.size}"
         )
 
-    if not any(s == N2_method for s in ["teosp1", "teos", "endpt", "bulk"]):
+    if not any(s == N2_method for s in ["teosp1", "teos", "endpt"]):
         raise ValueError(
-            f"N2_method = {N2_method} invalid. It must be 'teosp1', 'teos', 'endpt' or 'bulk'."
+            f"N2_method = {N2_method} invalid. It must be 'teosp1', 'teos' or 'endpt'."
         )
 
     if not any(s == EOS for s in ["gsw", "linear"]):
@@ -194,7 +196,9 @@ def eps_overturn(
     diag = {}
     diagvar = [
         "eps",
-        "N2",
+        "Kp",
+        "N2_linear",
+        "N2_bulk",
         "Lt",
         "thorpe_disp",
         "dens",
@@ -210,7 +214,7 @@ def eps_overturn(
     if use_ip and overturns_from_t:
         diag["t_ip"] = np.full_like(depth, np.nan)
 
-    flagvar = ["noise_flag", "N2_flag", "ends_flag", "Ro_flag"]
+    flagvar = ["noise_flag", "N2_linear_flag", "N2_bulk_flag", "ends_flag", "Ro_flag"]
     for var in flagvar:
         diag[var] = np.full_like(depth, False, dtype=bool)
 
@@ -277,8 +281,10 @@ def eps_overturn(
             CT_sorted = CT[sidx]
 
         # Temporary arrays.
-        N2 = np.full_like(depth, np.nan)
-        N2_flag = np.full_like(depth, False, dtype=bool)
+        N2_linear = np.full_like(depth, np.nan)
+        N2_bulk = np.full_like(depth, np.nan)
+        N2_linear_flag = np.full_like(depth, False, dtype=bool)
+        N2_bulk_flag = np.full_like(depth, False, dtype=bool)
         Ro_flag = np.full_like(depth, False, dtype=bool)
 
         # --->> Calculate Buoyancy Frequency <<---
@@ -292,7 +298,7 @@ def eps_overturn(
 
             # Estimate the buoyancy frequency.
             if N2_method == "teos":
-                N2o, _ = gsw.Nsquared(
+                N2o_linear, _ = gsw.Nsquared(
                     SA_sorted[[i0, i1]],
                     CT_sorted[[i0, i1]],
                     p[[i0, i1]],
@@ -303,30 +309,35 @@ def eps_overturn(
                 addi = 0 if i1 == ndata - 1 else 1
                 subi = 0 if i0 == 0 else 1
 
-                N2o, _ = gsw.Nsquared(
+                N2o_linear, _ = gsw.Nsquared(
                     SA_sorted[[i0 - subi, i1 + addi]],
                     CT_sorted[[i0 - subi, i1 + addi]],
                     p[[i0 - subi, i1 + addi]],
                     lat,
                 )
-            elif N2_method == "bulk":
-                g = gsw.grav(lat, p[pidx].mean())
-                densanom = dens[pidx] - dens_sorted[pidx]
-                densrms = np.sqrt(np.mean(densanom**2))
-                N2o = g * densrms / (Lto * np.mean(dens[pidx]))
             elif N2_method == "endpt":
                 g = gsw.grav(lat, p[pidx].mean())
                 ddens = dens_sorted[i1] - dens_sorted[i0]
                 ddepth = depth[i1] - depth[i0]
-                N2o = g * ddens / (ddepth * np.mean(dens[pidx]))
+                N2o_linear = g * ddens / (ddepth * np.mean(dens[pidx]))
             else:  # May be redundent because of check at beginning of function.
                 raise ValueError("N2_method '{}' is not available.".format(N2_method))
-
-            N2[pidx] = N2o
-
+            
+            # this method is to be used for Krho
+            N2_linear[pidx] = N2o_linear
+            
+            # use bulk N2 to calculate epsilon
+            g = gsw.grav(lat, p[pidx].mean())
+            densanom = dens[pidx] - dens_sorted[pidx]
+            densrms = np.sqrt(np.mean(densanom**2))
+            N2o_bulk = g * densrms / (Lto * np.mean(dens[pidx]))
+            N2_bulk[pidx] = N2o_bulk
+            
             # Flag negative N squared.
-            if N2o < 0:
-                N2_flag[pidx] = True
+            if N2o_linear < 0:
+                N2_linear_flag[pidx] = True
+            if N2o_bulk < 0:
+                N2_bulk_flag[pidx] = True
 
             Roo = np.unique(Ro[pidx])
 
@@ -338,12 +349,14 @@ def eps_overturn(
 
         # Fill flags.
         diag["noise_flag"][inbin] = noise_flag[inbin]
-        diag["N2_flag"][inbin] = N2_flag[inbin]
+        diag["N2_linear_flag"][inbin] = N2_linear_flag[inbin]
+        diag["N2_bulk_flag"][inbin] = N2_bulk_flag[inbin]
         diag["ends_flag"][inbin] = ends_flag[inbin]
         diag["Ro_flag"][inbin] = Ro_flag[inbin]
 
         # Fill other diagnostics.
-        diag["N2"][inbin] = N2[inbin]
+        diag["N2_linear"][inbin] = N2_linear[inbin]
+        diag["N2_bulk"][inbin] = N2_bulk[inbin]
         diag["Lt"][inbin] = Lt[inbin]
         diag["Ro"][inbin] = Ro[inbin]
         diag["thorpe_disp"][inbin] = thorpe_disp[inbin]
@@ -357,15 +370,22 @@ def eps_overturn(
             diag["t_ip"][inbin] = q[inbin]
 
     # Finally calculate epsilon for diagnostics, avoid nans, inf and negative N2.
-    isgood = np.isfinite(diag["N2"]) & np.isfinite(diag["Lt"]) & ~diag["N2_flag"]
-    diag["eps"][isgood] = alpha**2 * diag["Lt"][isgood] ** 2 * diag["N2"][isgood] ** 1.5
+    # for epsilon: use bulk N2
+    isgood = np.isfinite(diag["N2_bulk"]) & np.isfinite(diag["Lt"]) & ~diag["N2_bulk_flag"] &~diag["N2_linear_flag"]
+    diag["eps"][isgood] = alpha**2 * diag["Lt"][isgood] ** 2 * diag["N2_bulk"][isgood] ** 1.5
+    # And calculate turbulent diffusivity
+    diag["Kp"][isgood] = Gamma * diag["eps"][isgood] / diag["N2_linear"][isgood]
 
     # Use flags to get rid of bad overturns in basic output
-    isbad = diag["noise_flag"] | diag["N2_flag"] | diag["Ro_flag"]
+    isbad = diag["noise_flag"] | diag["N2_linear_flag"] | diag["N2_bulk_flag"] | diag["Ro_flag"]
     eps = diag["eps"].copy()
     eps[isbad] = np.nan
-    N2 = diag["N2"].copy()
-    N2[isbad] = np.nan
+    Kp = diag["Kp"].copy()
+    Kp[isbad] = np.nan
+    N2_bulk = diag["N2_bulk"].copy()
+    N2_bulk[isbad] = np.nan
+    N2_linear = diag["N2_linear"].copy()
+    N2_linear[isbad] = np.nan
     Lt[isbad] = np.nan
     thorpe_disp[isbad] = np.nan
 
@@ -373,9 +393,9 @@ def eps_overturn(
     eps[np.isnan(eps)] = background_eps
 
     if return_diagnostics:
-        return Lt, thorpe_disp, eps, N2, diag
+        return Lt, thorpe_disp, eps, Kp, N2_bulk, N2_linear, diag
     else:
-        return Lt, thorpe_disp, eps, N2
+        return Lt, thorpe_disp, eps, Kp, N2_bulk, N2_linear
 
 
 def pot_rho_linear(SP, t, rho0=1025, a=2e-4, b=7e-4, SP0=35, t0=15):
