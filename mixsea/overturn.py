@@ -6,6 +6,8 @@ def nan_eps_overturn(
     depth,
     t,
     SP,
+    lon,
+    lat,
     **kwargs,
 ):
     """
@@ -56,7 +58,7 @@ def nan_eps_overturn(
                 ar[notnan] = diag[key]
                 diag[key] = ar  # This will wipe out the old item.
 
-        return eps, N2, diag
+        return eps, N2_linear, N2_bulk, diag
 
     else:
         return eps, N2_linear, N2_bulk
@@ -158,7 +160,7 @@ def eps_overturn(
     SP = np.asarray(SP)
 
     if not np.all(np.isclose(np.maximum.accumulate(depth), depth)):
-        raise ValueError("Depth is not monotonically increasing, please fix.")
+       raise ValueError("Depth is not monotonically increasing, please fix.")
 
     if SP.size == 1:
         SP = np.full_like(depth, SP)
