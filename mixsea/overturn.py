@@ -6,8 +6,6 @@ def nan_eps_overturn(
     depth,
     t,
     SP,
-    lon,
-    lat,
     **kwargs,
 ):
     """
@@ -31,7 +29,10 @@ def nan_eps_overturn(
     if isnan.sum() == 0:  # If there are no NaNs then return.
         return eps_overturn(depth, t, SP, **kwargs)
 
+    Lt = np.full_like(depth, np.nan)
+    thorpe_disp = np.full_like(depth, np.nan)
     eps = np.full_like(depth, np.nan)
+    Kp = np.full_like(depth, np.nan)
     N2_linear = np.full_like(depth, np.nan)
     N2_bulk = np.full_like(depth, np.nan)
 
@@ -41,7 +42,7 @@ def nan_eps_overturn(
     else:
         return_diagnostics = False
 
-    eps[notnan], N2_linear[notnan], N2_bulk[notnan], diag = eps_overturn(
+    Lt[notnan], thorpe_disp[notnan], eps[notnan], Kp[notnan], N2_bulk[notnan], N2_linear[notnan], diag = eps_overturn(
         depth[notnan],
         t[notnan],
         SP[notnan],
@@ -58,10 +59,10 @@ def nan_eps_overturn(
                 ar[notnan] = diag[key]
                 diag[key] = ar  # This will wipe out the old item.
 
-        return eps, N2_linear, N2_bulk, diag
+        return Lt, thorpe_disp, eps, Kp, N2_bulk, N2_linear, diag
 
     else:
-        return eps, N2_linear, N2_bulk
+        return Lt, thorpe_disp, eps, Kp, N2_bulk, N2_linear
 
 
 def eps_overturn(
