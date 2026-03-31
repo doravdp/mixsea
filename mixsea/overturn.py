@@ -470,7 +470,10 @@ def thorpe_scale(depth, q, dnoise):
     q = np.asarray(q)
 
     if q[0] > q[-1]:
-        raise ValueError("The entire profile is unstable, q[0] > q[-1].")
+        try:
+            raise ValueError("The entire profile is unstable, q[0] > q[-1].")
+        except ValueError as err:
+            print(err)
 
     if not np.all(np.isclose(np.maximum.accumulate(depth), depth)):
         raise ValueError(
